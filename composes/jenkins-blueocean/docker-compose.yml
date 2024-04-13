@@ -1,0 +1,18 @@
+---
+services:
+  jenkins:
+    image: jenkins-blueocean:latest # this should be the name of the local image you built
+    privileged: true
+    user: root
+    ports:
+      - 8080:8080
+      - 50000:50000
+    environment:
+      - DOCKER_HOST=tcp://docker:2376
+      - DOCKER_CERT_PATH=/certs/client
+      - DOCKER_TLS_VERIFY=1
+    container_name: jenkins-blueocean
+    volumes:
+      - ./jenkins/jenkins_home:/var/jenkins_home
+      - ./jenkins/certs/client:/certs/client:ro
+    restart: unless-stopped
