@@ -1,0 +1,91 @@
+---
+- name: Validate hosts
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Check if the host was patched within the last 5 hours using yum history
+      shell: |
+        current_time=$(date +%s)
+        transaction_id=$(yum history | grep 'update -y --disablerepo' | awk '{print $1}' | head -n 1)
+        if [ -n "$transaction_id" ]; then
+          begin_time=$(sudo yum history info "$transaction_id" | grep 'Begin time' | head -n 1 | awk -F': ' '{print $2}')
+          patch_time=$(date -d "$begin_time" +%s 2>/dev/null)
+          time_diff=$(( (current_time - patch_time) / 3600 ))
+          if [ "$time_diff" -le 5 ]; then
+            echo "Yes"
+          else
+            echo "No"
+          fi
+        else
+          echo "No"
+        fi
+      become: no
+      register: patch_check
+      ignore_errors: yes
+      changed_when: patch_check.stdout == "Yes"
+
+    - name: Check if the current kernel is the latest available
+      shell: |
+        current_kernel=$(uname -r)
+        latest_kernel=$(sudo rpm -q kernel --last | head -n 1 | awk '{print $1}' | sed 's/kernel-//')
+        if [[ "$current_kernel" == "$latest_kernel" ]]; then
+          echo "Current kernel is the latest available"
+        else
+          echo "Current kernel is NOT the latest available"
+        fi
+      become: no
+      register: kernel_check
+      ignore_errors: yes
+
+    - name: Check if the host was rebooted within the last 5 hours
+      shell: |
+        last_reboot=$(who -b | awk '{print $3, $4}')
+        current_time=$(date '+%Y-%m-%d %H:%M:%S')
+        time_diff=$(($(date +%s -d "$current_time") - $(date +%s -d "$last_reboot")))
+        if [ "$time_diff" -lt 18000 ]; then
+          echo "Host was rebooted within the last 5 hours"
+        else
+          echo "Host was NOT rebooted within the last 5 hours"
+        fi
+      become: no
+      register: reboot_check
+      ignore_errors: yes
+
+    - name: Collect uptime
+      shell: uptime
+      register: system_uptime
+      become: no
+      ignore_errors: yes
+
+    - name: Collect hostname
+      shell: hostname
+      register: system_hostname
+      become: no
+      ignore_errors: yes
+
+    - name: Collect Kernel version
+      shell: uname -r
+      register: kernel_version
+      become: no
+      ignore_errors: yes
+
+    - name: Collect Rocky Release
+      shell: cat /etc/redhat-release
+      register: rocky_release
+      become: no
+      ignore_errors: yes
+
+    - name: Set combined output fact
+      set_fact:
+        combined_output: |
+          ============================================
+          Hostname: {{ system_hostname.stdout }}
+          Rocky Release: {{ rocky_release.stdout }}
+          Uptime: {{ system_uptime.stdout }}
+          Kernel: {{ kernel_version.stdout }}
+          Host was patched within the last 5 hours: {{ patch_check.stdout }}
+          Kernel Check: {{ kernel_check.stdout }}
+          Reboot Check: {{ reboot_check.stdout }}
+          ============================================
+
+    print ?????
